@@ -82,4 +82,57 @@ customer_payment_performance <- delinquencies_num_customers %>%
 # Writing out DTE customer payment performance
 write.csv(customer_payment_performance, file.path(outdir, "dte_customer_payment_performance.csv"), row.names = FALSE)
 
+# Shutoffs----------------------------------------------------------------------
+shutoffs <- dte_data[47:109, ]
+shutoffs <- shutoffs[, 2:43]
+colnames(shutoffs) <- c("variable", as.character(dates$date))
+
+disconnections_non_payment <- shutoffs[12:41, ]
+# Adding appropriate dates to column names
+colnames(disconnections_non_payment) <- c("variable", as.character(dates$date))
+
+shutoff_types <- data.frame(
+  utility = c(
+    rep("Electric", 10),
+    rep("Natural Gas", 10),
+    rep("Combination", 10)
+  )
+)
+
+income_types <- c(
+  "total",
+  rep("Low-income", 3),
+  rep("Non-Low-income", 3),
+  rep("Senior Non-Low-income", 3)
+)
+
+income_col <- data.frame(
+  income = rep(income_types, 3)
+)
+
+housing_types <- c(
+  "total",
+  "Confirmed Occupied",
+  "Unconfirmed Occupied"
+)
+
+housing_col <- data.frame(
+  housing = rep(housing_types, 9)
+)
+
+disconnections_non_payment <- disconnections_non_payment %>%
+  cbind(shutoff_types) %>%
+  cbind(income_col) %>%
+  # filter out totals to remove duplicates
+  filter(income != "total") %>%
+  cbind(housing_col) %>%
+  # filter out totals to remove duplicates
+  filter(housing != "total") %>%
+  # turn all date columns into one single date column
+  pivot_longer(-c(variable, utility, income, housing), names_to = "date", values_to = "num_hh") %>%
+  # correct column types
+  mutate(num_hh = as.numeric(num_hh))
+
+write.csv(disconnections_non_payment, file.path(outdir, "disconnections_non_payment.csv"), row.names = FALSE)
+
 
