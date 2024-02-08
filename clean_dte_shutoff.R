@@ -83,14 +83,19 @@ customer_payment_performance <- delinquencies_num_customers %>%
 write.csv(customer_payment_performance, file.path(outdir, "dte_customer_payment_performance.csv"), row.names = FALSE)
 
 # Shutoffs----------------------------------------------------------------------
+
+# Isolating shutoff data
 shutoffs <- dte_data[47:109, ]
 shutoffs <- shutoffs[, 2:43]
+# adding appropriate dates for columns
 colnames(shutoffs) <- c("variable", as.character(dates$date))
 
+# Isolating disconnections due to non payment
 disconnections_non_payment <- shutoffs[12:41, ]
 # Adding appropriate dates to column names
 colnames(disconnections_non_payment) <- c("variable", as.character(dates$date))
 
+# Utility shutoffs
 shutoff_types <- data.frame(
   utility = c(
     rep("Electric", 10),
@@ -98,28 +103,29 @@ shutoff_types <- data.frame(
     rep("Combination", 10)
   )
 )
-
+# Income levels
 income_types <- c(
   "total",
   rep("Low-income", 3),
   rep("Non-Low-income", 3),
   rep("Senior Non-Low-income", 3)
 )
-
+# Income column (used to add income levels to disconnection data)
 income_col <- data.frame(
   income = rep(income_types, 3)
 )
-
+# Housing types
 housing_types <- c(
   "total",
   "Confirmed Occupied",
   "Unconfirmed Occupied"
 )
-
+# Housing column (used to add housing types to disconnection data)
 housing_col <- data.frame(
   housing = rep(housing_types, 9)
 )
 
+# Disconnection data disaggregated by utility, income, housing and date
 disconnections_non_payment <- disconnections_non_payment %>%
   cbind(shutoff_types) %>%
   cbind(income_col) %>%
@@ -128,11 +134,51 @@ disconnections_non_payment <- disconnections_non_payment %>%
   cbind(housing_col) %>%
   # filter out totals to remove duplicates
   filter(housing != "total") %>%
+  # remove unnecessary column
+  select(-variable) %>%
   # turn all date columns into one single date column
-  pivot_longer(-c(variable, utility, income, housing), names_to = "date", values_to = "num_hh") %>%
+  pivot_longer(-c(utility, income, housing), names_to = "date", values_to = "num_hh") %>%
   # correct column types
   mutate(num_hh = as.numeric(num_hh))
 
+# Writing out disconnection data
 write.csv(disconnections_non_payment, file.path(outdir, "disconnections_non_payment.csv"), row.names = FALSE)
+
+
+# Alternative Shutoff Protection Plan-------------------------------------------
+
+# Isolating Alternative Shutoff Protection Plan data
+alt_shutoff_enrollments <- dte_data[41:43, ]
+alt_shutoff_enrollments <- alt_shutoff_enrollments[, 2:43]
+# adding appropriate dates for columns
+colnames(alt_shutoff_enrollments) <- c("variable", as.character(dates$date))
+
+# Income levels
+income_levels <- data.frame(
+  income = c("total",
+  "low_income",
+  "seniors")
+)
+
+# Alternative shutoff protection plan enrollments disaggregated by income
+alt_shutoff_enrollments <- alt_shutoff_enrollments %>%
+  # adding income levels
+  cbind(income_levels) %>%
+  # turning all date columns into a single date column
+  pivot_longer(-c(variable, income), names_to = "date", values_to = "num_enrollments") %>%
+  select(-variable) %>%
+  # correcting column type
+  mutate(num_enrollments = as.numeric(num_enrollments)) %>%
+  # pivot enrollments column to find number of non low income, non senior enrollments
+  pivot_wider(names_from = income, values_from = num_enrollments) %>%
+  mutate(non_senior_non_low_income = total - low_income - seniors) %>%
+  # remove total count to remove duplicates
+  select(-total) %>%
+  # pivot back data frame to have a date, income, num enrollments column
+  pivot_longer(-c(date), names_to = "income", values_to = "num_enrollments")
+
+# Write out Alternative shutoff protection plan enrollments disaggregated by income
+write.csv(alt_shutoff_enrollments, file.path(outdir, "alt_shutoff_enrollments.csv"), row.names = FALSE)
+
 
 
