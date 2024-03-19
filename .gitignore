@@ -1,4 +1,10 @@
+
 *.Rproj
-data/
 .Rproj.user
+
+.DS_store
+
 outputs/
+data/
+results/
+
