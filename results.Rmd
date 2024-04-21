@@ -1,0 +1,187 @@
+---
+title: "Results"
+author: "Energy Equity Project"
+date: "2024-03-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE)
+knitr::opts_chunk$set(include=FALSE)
+knitr::opts_chunk$set(message=FALSE)
+knitr::opts_chunk$set(warning=FALSE)
+
+library(tidyverse)
+library(ggpubr)
+
+outdir <- "results"
+
+eep_colors <- c(
+  "#00274c",
+  "#145DA0",
+  "#2E8BC0",
+  "#19381f",
+  "#53a548",
+  "#ffcb05"
+)
+
+eep_colors <- c(
+  "#06283D",
+  "#1363DF",
+  "#B4D4FF",
+  "#FCB97D"
+)
+```
+
+```{r}
+customer_payment_performance <- read.csv("outputs/dte_customer_payment_performance.csv")
+```
+
+```{r}
+arrears <- customer_payment_performance %>%
+  filter(income == "total") %>%
+  group_by(date) %>%
+  summarize(arrears_usd = sum(arrears, na.rm = TRUE)) %>%
+  ungroup()
+
+arrears_start <- arrears %>%
+  filter(date == "2020-09-01") %>%
+  pull(arrears_usd)
+
+arrears_end <- arrears %>%
+  filter(date == "2023-11-01") %>%
+  pull(arrears_usd)
+
+total_arrears_percent_decrease <- signif(100 * (1 - (arrears_end / arrears_start)), 3)
+```
+
+DTE arrears across all delinquency periods have decreased by `r total_arrears_percent_decrease`% from $`r format(signif(arrears_start/1e6, 3), scientific=F)` million, in September 2020, to $`r format(signif(arrears_end/1e6, 3), scientific=F)` million in November of 2023.
+
+```{r arrears_changes}
+arrears_changes <- customer_payment_performance %>%
+  filter(income != "total") %>%
+  select(duration, date, income, arrears) %>%
+  filter(date == "2020-09-01" |
+           date == "2023-11-01") %>%
+  mutate(period = case_when(
+    date == "2020-09-01" ~ "start",
+    date == "2023-11-01" ~ "end"
+  )) %>%
+  select(-date) %>%
+  pivot_wider(names_from = "period", values_from = "arrears") %>%
+  mutate(difference = start - end) %>%
+  mutate(percent_diff = 100 * (difference / start)) %>%
+  group_by(duration) %>%
+  mutate(start_total = sum(start, na.rm = TRUE),
+         end_total = sum(end, na.rm = TRUE)) %>%
+  ungroup() %>%
+  mutate(difference_total = start_total - end_total) %>%
+  mutate(percent_diff_total = 100 * (difference_total / start_total))
+
+write.csv(arrears_changes, file.path(outdir, "arrears_changes.csv"), row.names = FALSE)
+```
+
+```{r arrears_changes_income_level}
+
+arrear_changes_income <- arrears_changes %>%
+  group_by(income) %>%
+  summarize(start = sum(start, na.rm = TRUE),
+            end = sum(end, na.rm = TRUE)) %>%
+  ungroup() %>%
+  mutate(difference = start - end) %>%
+  mutate(percent_diff = 100 * (difference / start))
+
+write.csv(arrear_changes_income, file.path(outdir, "arrears_changes_income_summary.csv"), row.names = FALSE)
+```
+
+```{r}
+
+disconnections_changes <- disconnections_non_payment %>%
+  filter(date == "2020-09-01" |
+           date == "2023-11-01") %>%
+  mutate(period = case_when(
+    date == "2020-09-01" ~ "start",
+    date == "2023-11-01" ~ "end"
+  )) %>%
+  group_by(date, period) %>%
+  summarize(num_hh = sum(num_hh, na.rm = TRUE)) %>%
+  ungroup()
+
+alt_enrollment_changes <- alt_shutoff_enrollments %>%
+  filter(date == "2020-09-01" |
+           date == "2023-11-01") %>%
+  mutate(period = case_when(
+    date == "2020-09-01" ~ "start",
+    date == "2023-11-01" ~ "end"
+  )) %>%
+  group_by(date, period) %>%
+  summarize(num_enrollments = sum(num_enrollments, na.rm = TRUE)) %>%
+  ungroup()
+
+tmp <- disconnections_non_payment %>%
+  filter(date >= "2020-09-01" & date < "2023-12-01") %>%
+  group_by(date, income) %>%
+  summarize(num_hh = sum(num_hh)) %>%
+  ungroup() %>%
+  left_join(
+    alt_shutoff_enrollments %>%
+      mutate(income = case_when(
+        income == "low_income" ~ "Low-income",
+        income == "seniors" ~ "Seniors Non-Low-income",
+        income == "non_senior_non_low_income" ~ "Non-Low-income",
+        TRUE ~ "error"
+      )) %>%
+      group_by(date, income) %>%
+      summarize(num_enrollments = sum(num_enrollments)) %>%
+      ungroup(),
+    by = c("date", "income")
+  ) %>%
+  replace_na(list(num_hh = 0, num_enrollments = 0)) %>%
+  rename(num_shutoffs = num_hh) %>%
+  pivot_longer(c(num_shutoffs, num_enrollments), names_to = "type", values_to = "num_hh")
+
+tmp %>%
+  mutate(date = as.Date(date, "%Y-%m-%d")) %>%
+  mutate(type = case_when(
+    type == "num_shutoffs" ~ "Disconnections",
+    type == "num_enrollments" ~ "Alternative Shutoff\nProtection Plan Enrollments"
+  )) %>%
+  ggplot(aes(x = date, y = num_hh, fill = income)) +
+  geom_area(stat = "identity", position = "stack") +
+  scale_fill_manual(values = eep_colors) +
+  theme_bw() +
+  facet_grid(rows = vars(type)) +
+  theme(
+    legend.position = "top"
+  ) +
+  labs(y = "", x = "Date", fill = "Income")
+
+ggsave("disconnections_vs_alt_enrollments.png", width = 6, height = 5)
+```
+
+```{r}
+disconnections_alt_changes <- tmp %>%
+  filter(date == "2020-09-01" |
+           date == "2023-11-01") %>%
+  mutate(period = case_when(
+    date == "2020-09-01" ~ "start",
+    date == "2023-11-01" ~ "end"
+  )) %>%
+  select(-date) %>%
+  group_by(period, income, type) %>%
+  summarize(num_hh = sum(num_hh, na.rm = TRUE)) %>%
+  ungroup() %>%
+  pivot_wider(names_from = "period", values_from = "num_hh") %>%
+  mutate(difference = start - end) %>%
+  mutate(percent_diff = 100 * (1 - (difference/start))) %>%
+  mutate(type = case_when(
+    type == "num_shutoffs" ~ "Disconnections",
+    type == "num_enrollments" ~ "Alternative Shutoff\nProtection Plan Enrollments"
+  ))
+
+write.csv(disconnections_alt_changes %>%
+            filter(type == "Disconnections"), file.path(outdir, "disconnections_changes.csv"), row.names = FALSE)
+
+write.csv(disconnections_alt_changes %>%
+            filter(type == "Alternative Shutoff\nProtection Plan Enrollments"), file.path(outdir, "alt_enrollments_changes.csv"), row.names = FALSE)
+```
