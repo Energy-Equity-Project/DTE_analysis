@@ -1,5 +1,14 @@
 
 library(tidyverse)
+library(geojsonsf)
+
+outdir <- "results"
+
+dte_tracts <- geojson_sf("outputs/dte_tracts.geojson")
+
+# Transform census tract ID to numeric to join with DOE energy burden data
+dte_tracts <- dte_tracts %>%
+  mutate(gi = as.numeric(GEOID10))
 
 doe_dir <- "outputs/DOE_lEAD/CSV"
 
@@ -55,7 +64,6 @@ doe <- read.csv(file.path(doe_dir, "mi_ami_0-30.csv")) %>%
 # Only take into account MI census tracts within the DTE service territory
 doe <- doe %>%
   filter(gi %in% unique(dte_tracts$gi))
-
 
 energy_burdens <- doe %>%
   group_by(ami, energy_burden_group, energy_burden_class) %>%
@@ -138,8 +146,8 @@ avg_hh_over_extended %>%
   labs(x = "Area Median Income",
        y = "Average HH Difference between actual energy costs\nand affordable energy costs (USD)",
        fill = "Energy Burden") +
-  annotate("text", x = 5.5, y = 800, label = "Over Extended", angle = 270) +
-  annotate("text", x = 5.5, y = -1800, label = "Can Afford to Pay More", angle = 270) +
+  annotate("text", x = 5.5, y = 1100, label = "Over Extended", angle = 270) +
+  annotate("text", x = 5.5, y = -2000, label = "Can Afford to Pay More", angle = 270) +
   annotate("segment", x = 5.25, y = 100, xend = 5.25, yend = 2000, size = 2, linejoin = "mitre", arrow = arrow(type = "closed", length = unit(2, "mm")), color = "#9FB7B9") +
   annotate("segment", x = 5.25, y = -100, xend = 5.25, yend = -5000, size = 2, linejoin = "mitre", arrow = arrow(type = "closed", length = unit(2, "mm")), color = "#9FB7B9")
 
@@ -166,9 +174,9 @@ cumulative_over_extended %>%
        y = "Cumulative Difference between actual energy costs\nand affordable energy costs (billion USD)",
        fill = "Energy Burden") +
   annotate("text", x = 5.47, y = 0.6, label = "Over\nExtended", angle = 270, size = 3) +
-  annotate("text", x = 5.47, y = -3, label = "Can Afford to Pay More", angle = 270, size = 3) +
-  annotate("segment", x = 5.25, y = 0.1, xend = 5.25, yend = 1, size = 2, linejoin = "mitre", arrow = arrow(type = "closed", length = unit(2, "mm")), color = "#9FB7B9") +
-  annotate("segment", x = 5.25, y = -0.5, xend = 5.25, yend = -8, size = 2, linejoin = "mitre", arrow = arrow(type = "closed", length = unit(2, "mm")), color = "#9FB7B9")
+  annotate("text", x = 5.4, y = -3, label = "Can Afford to Pay More", angle = 270, size = 3) +
+  annotate("segment", x = 5.2, y = 0.1, xend = 5.2, yend = 1, size = 2, linejoin = "mitre", arrow = arrow(type = "closed", length = unit(2, "mm")), color = "#9FB7B9") +
+  annotate("segment", x = 5.2, y = -0.5, xend = 5.2, yend = -7, size = 2, linejoin = "mitre", arrow = arrow(type = "closed", length = unit(2, "mm")), color = "#9FB7B9")
 
 ggsave(file.path(outdir, "cumulative_HEAG.png"), width = 6, height = 5, device = "png")
 

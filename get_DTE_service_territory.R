@@ -26,21 +26,20 @@ dte_service_territory <- dte_service_territory %>%
 # Find all MI census tracts that are part of the DTE service territory
 dte_tracts <- st_intersection(dte_service_territory, mi_tracts)
 
-# Transform census tract ID to numeric to join with DOE energy burden data
-dte_tracts <- dte_tracts %>%
-  mutate(gi = as.numeric(GEOID10))
-
 # Writing out MI census tracts as geojson
-st_write(mi_tracts, dsn = "outputs/mi_tracts.geojson", layer = "mi_tracts.geojson")
+st_write(mi_tracts, dsn = "outputs/mi_tracts.geojson", layer = "mi_tracts.geojson",
+         append = FALSE, delete_dsn = TRUE, delete_layer = TRUE)
 
 # Writing out DTE service territory as geojson
-st_write(dte_service_territory, dsn = "outputs/dte_service_territory.geojson", layer = "dte_service_territory.geojson")
+st_write(dte_service_territory, dsn = "outputs/dte_service_territory.geojson", layer = "dte_service_territory.geojson",
+         append = FALSE, delete_dsn = TRUE, delete_layer = TRUE)
 
 # Write out all MI census tracts that intersect with DTE service territory
-st_write(dte_tracts, dsn = "outputs/dte_tracts.geojson", layer = "dte_tracts.geojson")
+st_write(dte_tracts, dsn = "outputs/dte_tracts.geojson", layer = "dte_tracts.geojson",
+         append = FALSE, delete_dsn = TRUE, delete_layer = TRUE)
 
 # All MI census tracts in the DTE service territory
-unique(dte_tracts$GEOID10)
+# unique(dte_tracts$GEOID10)
 
 
 
