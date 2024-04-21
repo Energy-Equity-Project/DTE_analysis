@@ -19,7 +19,8 @@ get_section_lines <- function(data, section_regexpr, num_lines_to_keep = 2) {
     if (str_detect(lines[i], section_regexpr)) {
       j <- 1
       lines_added <- 1
-      data_regexpr <- "\\s+\\d+\\s+|\\s+\\d+\\s+\\d+\\s+|\\s+\\d+\\s+\\d+\\s+\\d+\\s+|\\s+\\d+\\s+\\d+\\s+\\d+\\s+\\d+\\s+"
+      # data_regexpr <- "\\s+\\d+\\s+|\\s+\\d+\\s+\\d+\\s+|\\s+\\d+\\s+\\d+\\s+\\d+\\s+|\\s+\\d+\\s+\\d+\\s+\\d+\\s+\\d+\\s+"
+      data_regexpr <- "^\\s*[A-Za-z]\\."
       while (lines_added <= num_lines_to_keep) {
         if (str_detect(lines[i+j], data_regexpr)) {
           section_lines <- c(section_lines, lines[i+j])
