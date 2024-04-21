@@ -9,3 +9,5 @@ outputs/
 data/
 results/
 
+*.html
+
