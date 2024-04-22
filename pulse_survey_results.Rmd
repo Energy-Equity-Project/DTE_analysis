@@ -1,0 +1,233 @@
+---
+title: "pulse_survey_results"
+author: "Energy Equity Project"
+date: "2024-04-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+rm(list=ls())
+
+knitr::opts_chunk$set(include = FALSE)
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+
+library(tidyverse)
+
+datadir <- "outputs"
+outdir <- "results"
+
+utility_colors <- c(
+  "#145DA0",
+  "#53a548"
+)
+
+eep_colors <- c(
+  "#00274c",
+  "#145DA0",
+  "#2E8BC0",
+  "#19381f",
+  "#53a548",
+  "#ffcb05"
+)
+
+eep_colors <- c(
+  "#06283D",
+  "#1363DF",
+  "#B4D4FF",
+  "#FCB97D"
+)
+
+customer_groups_colors <- c(
+  "#00274c",
+  "#53a548",
+  "#FCB97D"
+)
+
+energy_burden_colors <- c(
+  "#32AC1A",
+  "#75BD67",
+  "#F9DF74",
+  "#EDAE49",
+  "#EA2B1F",
+  "#BA0000"
+)
+
+pulse_survey_colors <- c(
+  "#BA0000",
+  "#EDAE49",
+  "#145DA0"
+)
+```
+
+```{r load_data}
+pulse_survey <- read.csv(file.path(datadir, "mi_energy_resps.csv"))
+```
+
+```{r}
+# 1) Almost every month
+# 2) Some months
+# 3) 1 or 2 months
+# 4) Never
+# -99) Question seen but category not selected
+# -88) Missing / Did not report
+pulse_survey <- pulse_survey %>%
+  pivot_longer(-c(SCRAM, WEEK, HWEIGHT, PWEIGHT), names_to = "question", values_to = "response") %>%
+  mutate(resp_desc = case_when(
+    response == 1 ~ "Almost every month",
+    response == 2 ~ "Some months",
+    response == 3 ~ "1 or 2 months",
+    response == 4 ~ "Never",
+    response == -99 ~ "Question seen but category not selected",
+    response == -88 ~ "Missing / Did not report"
+  ))
+```
+
+```{r energy_question}
+# In the last 12 months, how many months did your household reduce or forego
+  # expenses for basic household necessities, such as medicine or food, in order
+  # to pay an energy bill?
+
+energy <- pulse_survey %>%
+  filter(question == "ENERGY") %>%
+  group_by(WEEK, response, resp_desc) %>%
+  summarize(n = sum(HWEIGHT, na.rm = TRUE)) %>%
+  ungroup() %>%
+  mutate(resp_desc = factor(resp_desc,
+                            levels = c("Almost every month",
+                                       "Some months",
+                                       "1 or 2 months",
+                                       "Missing / Did not report",
+                                       "Question seen but category not selected",
+                                       "Never")))
+
+energy %>%
+  filter(!(response %in% c(-88, -99, 4))) %>%
+  mutate(response = as.character(response)) %>%
+  ggplot(aes(x = WEEK, y = n/1e5, color = resp_desc)) +
+  scale_y_continuous(limits = c(0, 5)) +
+  geom_line(size = 1) +
+  scale_color_manual(values = pulse_survey_colors) +
+  theme_bw() +
+  theme(
+    legend.position = "bottom",
+    plot.title = element_text(size = 11)
+  ) +
+  labs(x = "Pulse Survey Week", y = "Number of MI Households (100,000s)", color = "Response",
+       title = "In the last 12 months, how many months did your household reduce or\nforego expenses for basic household necessities, such as medicine or food,\nin order to pay an energy bill?")
+
+ggsave(file.path(outdir, "pulse_survey_energy_ts.png"), height = 4, width = 6, units = "in", dpi = 500)
+```
+
+```{r energy_summary}
+energy_totals <- energy %>%
+  filter(!(response %in% c(-88, -99, 4))) %>%
+  group_by(WEEK) %>%
+  summarize(n = sum(n, na.rm = TRUE)) %>%
+  ungroup()
+
+energy_grps <- energy %>%
+  filter(!(response %in% c(-88, -99, 4))) %>%
+  group_by(WEEK, response, resp_desc) %>%
+  summarize(n = sum(n, na.rm = TRUE)) %>%
+  ungroup()
+```
+
+```{r unsafe_temp}
+# In the last 12 months, how many months did your household keep your home at a
+  # temperature that you felt was unsafe or unhealthy?
+unsafe_temp <- pulse_survey %>%
+  filter(question == "HSE_TEMP") %>%
+  group_by(WEEK, response, resp_desc) %>%
+  summarize(n = sum(HWEIGHT, na.rm = TRUE)) %>%
+  ungroup() %>%
+  mutate(resp_desc = factor(resp_desc,
+                            levels = c("Almost every month",
+                                       "Some months",
+                                       "1 or 2 months",
+                                       "Missing / Did not report",
+                                       "Question seen but category not selected",
+                                       "Never")))
+
+unsafe_temp %>%
+  filter(!(response %in% c(-88, -99, 4))) %>%
+  mutate(response = as.character(response)) %>%
+  ggplot(aes(x = WEEK, y = n/1e5, color = resp_desc)) +
+  scale_y_continuous(limits = c(0, 5)) +
+  geom_line(size = 1) +
+  scale_color_manual(values = pulse_survey_colors) +
+  theme_bw() +
+  theme(
+    legend.position = "bottom",
+    plot.title = element_text(size = 11)
+  ) +
+  labs(x = "Pulse Survey Week", y = "Number of MI Households (100,000s)", color = "Response",
+       title = "In the last 12 months, how many months did your household keep your home\nat a temperature that you felt was unsafe or unhealthy?")
+
+ggsave(file.path(outdir, "pulse_survey_unsafe_temp_ts.png"), height = 4, width = 6, units = "in", dpi = 500)
+```
+
+```{r unsafe_temp_summary}
+unsafe_temp_totals <- unsafe_temp %>%
+  filter(!(response %in% c(-88, -99, 4))) %>%
+  group_by(WEEK) %>%
+  summarize(n = sum(n, na.rm = TRUE)) %>%
+  ungroup()
+
+unsafe_temp_grp <- unsafe_temp %>%
+  filter(!(response %in% c(-88, -99, 4))) %>%
+  group_by(WEEK, response, resp_desc) %>%
+  summarize(n = sum(n, na.rm = TRUE)) %>%
+  ungroup()
+```
+
+```{r energy_bill}
+# In the last 12 months, how many times was your household unable to pay an
+  # energy bill or unable to pay the full bill amount?
+energy_bill <- pulse_survey %>%
+  filter(question == "ENRGY_BILL") %>%
+  group_by(WEEK, response, resp_desc) %>%
+  summarize(n = sum(HWEIGHT, na.rm = TRUE)) %>%
+  ungroup() %>%
+  mutate(resp_desc = factor(resp_desc,
+                            levels = c("Almost every month",
+                                       "Some months",
+                                       "1 or 2 months",
+                                       "Missing / Did not report",
+                                       "Question seen but category not selected",
+                                       "Never")))
+
+energy_bill %>%
+  filter(!(response %in% c(-88, -99, 4))) %>%
+  mutate(response = as.character(response)) %>%
+  ggplot(aes(x = WEEK, y = n/1e5, color = resp_desc)) +
+  scale_y_continuous(limits = c(0, 5)) +
+  geom_line(size = 1) +
+  scale_color_manual(values = pulse_survey_colors) +
+  theme_bw() +
+  theme(
+    legend.position = "bottom",
+    plot.title = element_text(size = 11)
+  ) +
+  labs(x = "Pulse Survey Week", y = "Number of households (1000s)", color = "Response",
+       title ="In the last 12 months, how many times was your household unable to pay\nan energy bill or unable to pay the full bill amount?")
+
+ggsave(file.path(outdir, "pulse_survey_energy_bill_ts.png"), height = 4, width = 6, units = "in", dpi = 500)
+```
+
+```{r energy_bill_summary}
+energy_bill_totals <- energy_bill %>%
+  filter(!(response %in% c(-88, -99, 4))) %>%
+  group_by(WEEK) %>%
+  summarize(n = sum(n, na.rm = TRUE)) %>%
+  ungroup()
+
+energy_bill_grp <- energy_bill %>%
+  filter(!(response %in% c(-88, -99, 4))) %>%
+  group_by(WEEK, response, resp_desc) %>%
+  summarize(n = sum(n, na.rm = TRUE)) %>%
+  ungroup()
+```
+
+
