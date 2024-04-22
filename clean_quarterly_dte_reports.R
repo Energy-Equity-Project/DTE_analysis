@@ -20,9 +20,9 @@ get_section_lines <- function(data, section_regexpr, num_lines_to_keep = 2) {
       j <- 1
       lines_added <- 1
       # data_regexpr <- "\\s+\\d+\\s+|\\s+\\d+\\s+\\d+\\s+|\\s+\\d+\\s+\\d+\\s+\\d+\\s+|\\s+\\d+\\s+\\d+\\s+\\d+\\s+\\d+\\s+"
-      data_regexpr <- "^\\s*[A-Za-z]\\."
+      data_header_regexpr <- "^\\s*[A-Za-z]\\."
       while (lines_added <= num_lines_to_keep) {
-        if (str_detect(lines[i+j], data_regexpr)) {
+        if (str_detect(lines[i+j], data_header_regexpr)) {
           section_lines <- c(section_lines, lines[i+j])
           lines_added <- lines_added + 1
         }
@@ -104,6 +104,46 @@ for (i in 1:length(quarter_reports)) {
 
   # Read in pdf file as text
   data <- pdf_text(file.path(datadir, quarter_reports[i]))
+  
+  # Remove all commas
+  data <- gsub(",", "", data)
+  
+  # Special cases for alternative shutoff protection plans
+  special_case_a <- "K\\. Total enrolled in program at end of month\\s+Non low-income and non-seniors are included in the month end count for Total\n"
+  replace_a <- "K\\. Total enrolled in program at end of month\\s+Non low-income and non-seniors are included in the month end count for Total"
+  data <- gsub(pattern = special_case_a, replacement = replace_a, data)
+  
+  special_case_b <- "K\\. Total enrolled in program at end of month\\s+Non low-income and non-seniors are included in the month end count for Total enrolled in\n"
+  replace_b <- "K\\. Total enrolled in program at end of month\\s+Non low-income and non-seniors are included in the month end count for Total enrolled in"
+  data <- gsub(pattern = special_case_b, replacement = replace_b, data)
+  
+  special_case_c <- "K. Total enrolled in program at end of month\\s+Non low-income and non-seniors are included in the month end count for Total enrolled\n"
+  replace_c <- "K. Total enrolled in program at end of month\\s+Non low-income and non-seniors are included in the month end count for Total enrolled"
+  data <- gsub(pattern = special_case_c, replacement = replace_c, data)
+  
+  special_case_d <- "K. Total enrolled in program at end of month\\s+Non low-income and non-seniors are included in the month end count for Total enrolled in the\n"
+  replace_d <- "K. Total enrolled in program at end of month\\s+Non low-income and non-seniors are included in the month end count for Total enrolled in the"
+  data <- gsub(pattern = special_case_d, replacement = replace_d, data)
+  
+  special_case_e <- "b.   Number of seniors enrolled at end of month\\s+count for Total enrolled in the program\n"
+  replace_e <- "b.   Number of seniors enrolled at end of month\\s+count for Total enrolled in the program"
+  data <- gsub(pattern = special_case_e, replacement = replace_e, data)
+  
+  special_case_f <- "I. Total enrolled in program at the end of the month\\s+The month end count is higher than the combined senior and low-income customers\n"
+  replace_f <- "I. Total enrolled in program at the end of the month\\s+The month end count is higher than the combined senior and low-income customers"
+  data <- gsub(pattern = special_case_f, replacement = replace_f, data)
+  
+  special_case_g <- "I\\.\n"
+  replace_g <- "I\\."
+  data <- gsub(pattern = special_case_g, replacement = replace_g, data)
+  
+  special_case_h <- "I. Total enrolled in program at the end of the month\\s+The month end count is higher than the combined senior and low-income customers because DTE has\n"
+  replace_h <- "I. Total enrolled in program at the end of the month\\s+The month end count is higher than the combined senior and low-income customers because DTE has"
+  data <- gsub(pattern = special_case_h, replacement = replace_h, data)
+  
+  special_case_i <- "I.\\s+The month end count is higher than the combined senior and low-income customers\n"
+  replace_i <- "I.\\s+The month end count is higher than the combined senior and low-income customers"
+  data <- gsub(pattern = special_case_i, replacement = replace_i, data)
   
   # Collecting disconnections due to non-payment from PDF to CSV
   shutoff_lines <- get_section_lines(data, "Total of customers physically discontinued due to non-payment", 2)
