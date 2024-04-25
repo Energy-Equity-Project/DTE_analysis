@@ -17,6 +17,10 @@ dates <- dte_data[3, 3:43] %>%
   mutate(date = paste(date, "01", sep = "/")) %>%
   mutate(date = as.Date(date, "%Y/%m/%d"))
 
+# Number of restorations--------------------------------------------------------
+
+
+
 # Customer Payment Performance--------------------------------------------------
 
 # Selecting Customer Payment Performance Data
