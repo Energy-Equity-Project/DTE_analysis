@@ -1,0 +1,425 @@
+---
+title: "DOE Profiles"
+author: "Energy Equity Project"
+date: "2024-04-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+rm(list=ls())
+
+knitr::opts_chunk$set(include = FALSE)
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+
+library(tidyverse)
+
+datadir <- "outputs"
+outdir <- "results"
+
+utility_colors <- c(
+  "#145DA0",
+  "#53a548"
+)
+
+eep_colors <- c(
+  "#00274c",
+  "#145DA0",
+  "#2E8BC0",
+  "#19381f",
+  "#53a548",
+  "#ffcb05"
+)
+
+eep_colors <- c(
+  "#06283D",
+  "#1363DF",
+  "#B4D4FF",
+  "#FCB97D"
+)
+
+customer_groups_colors <- c(
+  "#00274c",
+  "#53a548",
+  "#FCB97D"
+)
+
+energy_burden_colors <- c(
+  "#32AC1A",
+  "#75BD67",
+  "#F9DF74",
+  "#EDAE49",
+  "#ed4c41",
+  "#e42215",
+  "#BA0000"
+)
+
+demographics_colors <- c(
+  "#EDAE49",
+  "#145DA0"
+)
+```
+
+```{r load_data}
+library(tidyverse)
+library(geojsonsf)
+
+outdir <- "results"
+
+dte_tracts <- geojson_sf("outputs/dte_tracts.geojson")
+
+# Transform census tract ID to numeric to join with DOE energy burden data
+dte_tracts <- dte_tracts %>%
+  mutate(gi = as.numeric(GEOID10))
+
+doe_dir <- "outputs/DOE_lEAD/FPL/CSV"
+
+doe <- read.csv(file.path(doe_dir, "mi_fpl_0-100.csv")) %>%
+  mutate(fpl = "0-100%") %>%
+  bind_rows(
+    read.csv(file.path(doe_dir, "mi_fpl_100-150.csv")) %>%
+      mutate(fpl = "100-150%")
+  ) %>%
+  bind_rows(
+    read.csv(file.path(doe_dir, "mi_fpl_150-200.csv")) %>%
+      mutate(fpl = "150-200%")
+  ) %>%
+  bind_rows(
+    read.csv(file.path(doe_dir, "mi_fpl_200-400.csv")) %>%
+      mutate(fpl = "200-400%")
+  ) %>%
+  bind_rows(
+    read.csv(file.path(doe_dir, "mi_fpl_400+.csv")) %>%
+      mutate(fpl = "400%+")
+  ) %>%
+  mutate(energy_burden_group = case_when(
+    burden >= 0 & burden <= 3 ~ "0-3%",
+    burden > 3 & burden <= 6 ~ "3-6%",
+    burden > 6 & burden <= 9 ~ "6-9%",
+    burden > 9 & burden <= 12 ~ "9-12%",
+    burden > 12 & burden <= 15 ~ "12-15%",
+    burden > 15 & burden <= 20 ~ "15-20%",
+    burden > 20 ~ "20%+",
+    TRUE ~ "error"
+  )) %>%
+  mutate(energy_burden_class = case_when(
+    energy_burden_group == "0-3%" ~ "Inexpensive",
+    energy_burden_group == "3-6%" ~ "Affordable",
+    energy_burden_group == "6-9%" ~ "Moderately Unaffordable",
+    energy_burden_group == "9-12%" ~ "High",
+    energy_burden_group == "12-15%" ~ "Severe",
+    energy_burden_group == "15-20%" ~ "Extreme",
+    energy_burden_group == "20%+" ~ "Catastrophic",
+    TRUE ~ "error"
+  )) %>%
+  mutate(fpl = factor(fpl,
+                      levels = c("0-100%", "100-150%", "150-200%", "200-400%", "400%+"))) %>%
+  mutate(
+    energy_burden_group = factor(
+      energy_burden_group,
+      levels=c("0-3%", "3-6%", "6-9%", "9-12%", "12-15%", "15-20%", "20%+", "error")
+    ),
+    energy_burden_class = factor(
+      energy_burden_class,
+      levels=c("Inexpensive", "Affordable", "Moderately Unaffordable", "High", "Severe", "Extreme", "Catastrophic", "error")
+    )
+  )
+
+# Only take into account MI census tracts within the DTE service territory
+doe <- doe %>%
+  filter(gi %in% unique(dte_tracts$gi))
+```
+
+```{r doe_bipoc_summary}
+num_bipoc_hh <- doe %>%
+  mutate(bipoc_hh = (1 - (wte_nhl / 100)) * h_count) %>%
+  summarize(bipoc_hh = sum(bipoc_hh)) %>%
+  pull(bipoc_hh)
+
+num_wte_nhl_hh <- doe %>%
+  mutate(white_hh = (wte_nhl / 100) * h_count) %>%
+  summarize(white_hh = sum(white_hh)) %>%
+  pull(white_hh)
+
+percent_bipoc_hh <- 100 * (num_bipoc_hh / (num_bipoc_hh + num_wte_nhl_hh))
+```
+
+In Michigan `r round(percent_bipoc_hh)`% of households identify as BIPOC households (calculated as total number of households - households identifying as White not Hispanic or Latino).
+
+```{r doe_demographics}
+# Demographics (%)
+tmp <- doe %>%
+  group_by(energy_burden_group, energy_burden_class) %>%
+  summarize(blk_aa = weighted.mean(blk_aa, h_count)) %>%
+  ungroup()
+
+tmp3 <- doe %>%
+  mutate(bipoc = 100 - wte_nhl) %>%
+  select(h_count, bipoc, wte_nhl, energy_burden_group, energy_burden_class) %>%
+  group_by(energy_burden_class, energy_burden_group) %>%
+  summarize(bipoc = weighted.mean(bipoc, h_count),
+            wte_nhl = weighted.mean(wte_nhl, h_count)) %>%
+  ungroup() %>%
+  pivot_longer(c(bipoc, wte_nhl), names_to = "Demographics", values_to = "percent_hh")
+
+tmp3 %>%
+  mutate(Demographics = case_when(
+    Demographics == "bipoc" ~ "BIPOC",
+    TRUE ~ "White (Not Hispanic)"
+  )) %>%
+  ggplot(aes(x = energy_burden_group, y = percent_hh, fill = Demographics)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_text(aes(label = paste(round(percent_hh), "%", sep = "")), vjust = -0.25,
+            position=position_dodge(width=0.9)) +
+  geom_hline(yintercept = 27) +
+  scale_fill_manual(values = demographics_colors) +
+  ylim(0, 81) +
+  theme_bw() +
+  theme(
+    legend.position = "top"
+  ) +
+  labs(x = "Energy Burden", y = "Percent of Households within\nenergy burden range",
+       caption = "*Expected BIPOC levels as 27% of Michigan households are BIPOC") +
+  annotate(geom="text", x = 0.5, y = 28, label = "*", size = 12)
+
+ggsave(file.path(outdir, "energy_burden_bipoc_white_bar_chart.png"),
+       height = 4, width = 6.5, units = "in", dpi = 500)
+```
+
+```{r}
+demographic_burdens_tracts <- doe %>%
+  mutate(bipoc = 100 - wte_nhl) %>%
+  mutate(bipoc_hh = (bipoc/ 100) * h_count) %>%
+  group_by(gi) %>%
+  mutate(total_bipoc_hh = sum(bipoc_hh, na.rm = TRUE),
+         total_hh = sum(h_count, na.rm = TRUE)) %>%
+  ungroup() %>%
+  mutate(percent_bipoc_tract = 100 * (total_bipoc_hh / total_hh)) %>%
+  mutate(majority_bipoc = case_when(
+    percent_bipoc_tract >= 50 ~ "Majority\nBIPOC\nCensus Tracts",
+    TRUE ~ "Majority White\n(Not Hispanic)\nCensus Tracts"
+  )) %>%
+  group_by(majority_bipoc, energy_burden_class, energy_burden_group) %>%
+  summarize(n = sum(h_count),
+            burden = weighted.mean(burden, h_count)) %>%
+  ungroup() %>%
+  group_by(majority_bipoc) %>%
+  mutate(percent_hh = 100 * (n / sum(n, na.rm = TRUE))) %>%
+  ungroup()
+
+write.csv(demographic_burdens_tracts, file.path(outdir, "demographic_burdens_tracts.csv"), row.names = FALSE)
+
+demographic_burdens_tracts %>%
+  mutate(energy_burden_group = paste(energy_burden_group, energy_burden_class, sep = "\n")) %>%
+  mutate(energy_burden_group = factor(energy_burden_group,
+                                      levels = c(
+                                        "0-3%\nInexpensive",
+                                        "3-6%\nAffordable",
+                                        "6-9%\nModerately Unaffordable",
+                                        "9-12%\nHigh",
+                                        "12-15%\nSevere",
+                                        "15-20%\nExtreme",
+                                        "20%+\nCatastrophic"
+                                      ))) %>%
+  ggplot(aes(x = percent_hh, y = majority_bipoc, fill = energy_burden_group)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = energy_burden_colors) +
+  theme_bw() +
+  theme(
+    legend.position = "bottom",
+    axis.text.y = element_text(angle = 90, hjust = 0.5)
+  ) +
+  labs(y = "", x = "Percentage of Households within Demographic Group", fill = "Energy\nBurden")
+
+ggsave(file.path(outdir, "energy_burden_barchart_distribution_majority_bipoc.png"),
+       height = 4, width = 6, units = "in", dpi = 500)
+```
+
+```{r demographic_burdens_summary}
+
+white_unaffordable_percent <- demographic_burdens_tracts %>%
+  filter(majority_bipoc == "Majority White\n(Not Hispanic)\nCensus Tracts" &
+           !(energy_burden_group %in% c("0-3%", "3-6%"))) %>%
+  summarize(percent_hh = sum(percent_hh)) %>%
+  ungroup() %>%
+  pull(percent_hh)
+
+bipoc_unaffordable_percent <- demographic_burdens_tracts %>%
+  filter(majority_bipoc == "Majority\nBIPOC\nCensus Tracts" &
+           !(energy_burden_group %in% c("0-3%", "3-6%"))) %>%
+  summarize(percent_hh = sum(percent_hh)) %>%
+  ungroup() %>%
+  pull(percent_hh)
+
+white_severe_more_percent <- demographic_burdens_tracts %>%
+  filter(majority_bipoc == "Majority White\n(Not Hispanic)\nCensus Tracts" &
+           (energy_burden_group %in% c("12-15%", "15-20%", "20%+"))) %>%
+  summarize(percent_hh = sum(percent_hh)) %>%
+  ungroup() %>%
+  pull(percent_hh)
+
+bipoc_severe_more_percent <- demographic_burdens_tracts %>%
+  filter(majority_bipoc == "Majority\nBIPOC\nCensus Tracts" &
+           (energy_burden_group %in% c("12-15%", "15-20%", "20%+"))) %>%
+  summarize(percent_hh = sum(percent_hh)) %>%
+  ungroup() %>%
+  pull(percent_hh)
+```
+
+Majority White census tracts have `r round(white_unaffordable_percent)`% of households with an unaffordable. Majority BIPOC census tracts have `r round(bipoc_unaffordable_percent)`% of households with an unaffordable energy burden. Proportionally there are `r signif(bipoc_unaffordable_percent / white_unaffordable_percent, digits = 2)` times as many households in majority BIPOC census tracts with an unaffordable energy burden as households in majority white households. This divide is further exacerbated when taking Severe to Catastrophic energy burdens (12%+). Majority BIPOC census tracts proportionately have `r signif(bipoc_severe_more_percent / white_severe_more_percent, digits = 2)` times more households with a Severe to Catastrophic energy burden, `r round(bipoc_severe_more_percent)`%, compared to majority white census tracts, `r round(white_severe_more_percent)`%. 
+
+
+```{r fpl_energy_burden_bars}
+fpl_burdens <- doe %>%
+  group_by(fpl, energy_burden_group, energy_burden_class) %>%
+  summarize(h_count = sum(h_count, na.rm = TRUE)) %>%
+  ungroup() %>%
+  group_by(fpl) %>%
+  mutate(total_h_count = sum(h_count, na.rm = TRUE)) %>%
+  ungroup() %>%
+  mutate(percent = 100 * (h_count / total_h_count))
+
+write.csv(fpl_burdens, file.path(outdir, "fpl_burdens.csv"), row.names = FALSE)
+
+fpl_burdens %>%
+  ggplot(aes(x = fpl, y = percent, fill = energy_burden_group)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = energy_burden_colors) +
+  theme_bw() +
+  labs(x = "Federal Poverty Level (FPL)", y = "Percent of Households within FPL", fill = "Energy Burden")
+
+ggsave(file.path(outdir, "fpl_percent_hh_energy_burdens.png"), height = 4, width = 6, dpi = 500, units = "in")
+```
+
+```{r}
+fpl_burdens %>%
+  ggplot(aes(x = fpl, y = h_count/1e3, fill = energy_burden_group)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = energy_burden_colors) +
+  theme_bw() +
+  theme(
+    legend.position = c(0.12, 0.7)
+  ) +
+  labs(x = "Federal Poverty Level (FPL)", y = "Number Households (thousands)", fill = "Energy Burden")
+
+ggsave(file.path(outdir, "fpl_hh_energy_burdens.png"), height = 4, width = 6, dpi = 500, units = "in")
+```
+
+```{r fpl_burden_summary}
+
+percent_fpl_400_cheap <- fpl_burdens %>%
+  filter(fpl == "400%+" &
+           energy_burden_group == "0-3%") %>%
+  pull(percent)
+
+percent_fpl_0_100_affordable <- fpl_burdens %>%
+  filter(fpl == "0-100%" &
+           energy_burden_group == "3-6%") %>%
+  pull(percent)
+
+percent_fpl_0_100_catastrophic <- fpl_burdens %>%
+  filter(fpl == "0-100%" &
+           energy_burden_group == "20%+") %>%
+  pull(percent)
+```
+
+Across the DTE service territory high energy burdens disproportionately affect lower income households. In the DTE service territory, `r signif(percent_fpl_400_cheap, digits = 3)`% of households classified at 400% FPL have an inexpensive energy burden. In comparison, there are no households classified at 0-100% FPL that have an inexpensive (0-3%) energy burden and only `r signif(percent_fpl_0_100_affordable, digits = 1)`% of these households have an affordable (3-6%) energy burden, meanwhile `r round(percent_fpl_0_100_catastrophic)`% of these have a catastrophic (20%+) energy burden.
+
+
+
+```{r fpl_burden_solutions}
+cejst <- read.csv("../Data/CEJST_20230718/1.0-communities.csv")
+dte_cejst <- cejst %>%
+  filter(Census.tract.2010.ID %in% unique(doe$gi))
+
+thresholds_exceeded <- cejst %>%
+  select(gi = Census.tract.2010.ID, threshold_criteria_exceeded = Total.threshold.criteria.exceeded)
+
+tract_burdens <- doe %>%
+  group_by(gi) %>%
+  summarize(tract_hh = sum(h_count, na.rm = TRUE),
+            tract_burden = weighted.mean(burden, h_count)) %>%
+  ungroup() %>%
+  mutate(burden_percentile = percent_rank(tract_burden) * 100) %>%
+  arrange(desc(burden_percentile)) %>%
+  mutate(percentile_category = case_when(
+    burden_percentile >= 98 ~ "Top 2%",
+    burden_percentile >= 95 & burden_percentile < 98 ~ "Top 2-5%",
+    burden_percentile >= 90 & burden_percentile< 95 ~ "Top 5-10%",
+    burden_percentile >= 75 & burden_percentile < 90 ~ "Top 10-25%",
+    TRUE ~ "rest"
+  ))
+
+fpl_hh <- doe %>%
+  group_by(gi, fpl) %>%
+  summarize(h_count = sum(h_count, na.rm = TRUE)) %>%
+  ungroup() %>%
+  group_by(gi) %>%
+  mutate(total_hh = sum(h_count, na.rm = TRUE)) %>%
+  ungroup() %>%
+  mutate(percent_hh = 100 * (h_count / total_hh)) %>%
+  mutate(below_200 = case_when(
+    fpl %in% c("0-100%", "100-150%", "150-200%") ~ TRUE,
+    TRUE ~ FALSE
+  )) %>%
+  mutate(below_100 = case_when(
+    fpl %in% c("0-100%") ~ TRUE,
+    TRUE ~ FALSE
+  )) %>%
+  group_by(gi, below_200) %>%
+  mutate(below_200_hh = sum(h_count)) %>%
+  ungroup() %>%
+  group_by(gi, below_100) %>%
+  mutate(below_100_hh = sum(h_count)) %>%
+  ungroup()
+
+
+  
+
+sols <- tract_burdens %>%
+  left_join(
+    thresholds_exceeded,
+    by = c("gi")
+  ) %>%
+  left_join(
+    fpl_hh %>%
+      filter(below_200 == TRUE) %>%
+      select(gi, below_200_hh) %>%
+      distinct(),
+    by = c("gi")
+  ) %>%
+  left_join(
+    fpl_hh %>%
+      filter(below_100 == TRUE) %>%
+      select(gi, below_100_hh) %>%
+      distinct(),
+    by = c("gi")
+  ) %>%
+  mutate(percent_below_200 = 100 * (below_200_hh / tract_hh),
+         percent_below_100 = 100 * (below_100_hh / tract_hh)) %>%
+  filter(percentile_category != "rest") %>%
+  group_by(percentile_category) %>%
+  summarize(avg_burden = weighted.mean(tract_burden, tract_hh),
+            avg_thresholds_exceeded = weighted.mean(threshold_criteria_exceeded, tract_hh),
+            avg_below_200 = weighted.mean(percent_below_200, tract_hh),
+            avg_below_100 = weighted.mean(percent_below_100, tract_hh)) %>%
+  ungroup() %>%
+  pivot_longer(-c(percentile_category), names_to = "variable", values_to = "values") %>%
+  mutate(percentile_category = factor(percentile_category,
+                                      levels = c("Top 2%", "Top 2-5%", "Top 5-10%", "Top 10-25%"))) %>%
+  pivot_wider(names_from = percentile_category, values_from = values) %>%
+  select(c("variable", "Top 2%", "Top 2-5%", "Top 5-10%", "Top 10-25%"))
+  # summarize(min_burden = min(tract_burden, na.rm = TRUE),
+  #           min_thresholds_exceeded = min(thresholds_exceeded, na.rm = TRUE),
+  #           min_below_200_percent = min(percent_below_200, na.rm = TRUE),
+  #           min_below_100_percent = min(percent_below_100, na.rm = TRUE)) %>%
+  #   ungroup()
+
+write.csv(sols, file.path(outdir, "burdens_solutions.csv"), row.names = FALSE)
+```
+
+
+
+
+
