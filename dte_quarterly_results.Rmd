@@ -1,0 +1,416 @@
+---
+title: "DTE Quarterly Results"
+author: "Energy Equity Project"
+date: "2024-04-21"
+output: html_document
+---
+
+```{r setup, include = FALSE}
+rm(list=ls())
+
+knitr::opts_chunk$set(include = FALSE)
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+
+library(tidyverse)
+
+datadir <- "outputs/clean_DTE_quarter_data"
+outdir <- "results"
+
+utility_colors <- c(
+  "#145DA0",
+  "#53a548"
+)
+
+eep_colors <- c(
+  "#00274c",
+  "#145DA0",
+  "#2E8BC0",
+  "#19381f",
+  "#53a548",
+  "#ffcb05"
+)
+
+eep_colors <- c(
+  "#06283D",
+  "#1363DF",
+  "#B4D4FF",
+  "#FCB97D"
+)
+
+customer_groups_colors <- c(
+  "#00274c",
+  "#53a548",
+  "#FCB97D"
+)
+```
+
+```{r load_data}
+disconnections <- read.csv(file.path(datadir, "disconnections.csv")) %>%
+  mutate(date = as.Date(date))
+
+restorations <- read.csv(file.path(datadir, "restorations.csv")) %>%
+  mutate(date = as.Date(date))
+
+alt_shutoffs <- read.csv(file.path(datadir, "alt_shutoff_protection_plan_enrollments.csv")) %>%
+  mutate(date = as.Date(date))
+
+wpp <- read.csv(file.path(datadir, "winter_protection_plan_enrollments.csv")) %>%
+  mutate(date = as.Date(date))
+```
+
+```{r disconnections_data}
+# Total number of disconnections per year
+yearly_disconnections <- disconnections %>%
+  mutate(year = format(date, "%Y")) %>%
+  group_by(year) %>%
+  summarize(disconnections = sum(disconnections, na.rm = TRUE)) %>%
+  ungroup()
+
+month_disconnections <- disconnections %>%
+  mutate(year = as.numeric(format(date, "%Y")),
+         month = as.numeric(format(date, "%m"))) %>%
+  group_by(year, month) %>%
+  summarize(disconnections = sum(disconnections, na.rm = TRUE)) %>%
+  ungroup()
+
+quarter_disconnections <- disconnections %>%
+  mutate(year = as.numeric(format(date, "%Y")),
+         month = as.numeric(format(date, "%m"))) %>%
+  group_by(year, month) %>%
+  summarize(disconnections = sum(disconnections, na.rm = TRUE)) %>%
+  ungroup() %>%
+  mutate(quarter = case_when(
+    month %in% c(1:3) ~ "Q1",
+    month %in% c(4:6) ~ "Q2",
+    month %in% c(7:9) ~ "Q3",
+    month %in% c(10:12) ~ "Q4",
+    TRUE ~ "error"
+  )) %>%
+  group_by(year, quarter) %>%
+  summarize(disconnections = sum(disconnections, na.rm = TRUE)) %>%
+  ungroup()
+```
+
+```{r disconnections_stacked_graph}
+ggplot() +
+  geom_area(data = disconnections, aes(x = date, y = disconnections / 1000, fill = utility),
+            stat = "identity", position = "stack") +
+  scale_fill_manual(values = utility_colors) +
+  geom_rect(
+    aes(
+      xmin = as.Date("01-03-2020", "%d-%m-%Y"),
+      xmax = as.Date("01-07-2020", "%d-%m-%Y"),
+      ymin = 0,
+      ymax = max(month_disconnections$disconnections)/1e3
+    ),
+    fill = "orange",
+    alpha = 0.5
+  ) +
+  scale_y_continuous(limits = c(0, max(month_disconnections$disconnections)/1e3),
+                     expand = c(0,0.1)) +
+  theme_bw() +
+  theme(
+    legend.position = "top"
+  ) +
+  labs(x = "", y = "DTE disconnections\ndue to non-payment (thousands)", fill = "Utility",
+       caption = "*Based on DTE Quarterly Report to MPSC Case U-18120, Rule 460.151") +
+  annotate(geom="text", x = as.Date("01-05-2020", "%d-%m-%Y"), y = 12, label = "COVID-19 Moratoria", angle = 90)
+  
+
+ggsave(file.path(outdir, "DTE_quarterly_disconnections.png"), dpi = 500, height = 4, width = 6, units = "in")
+```
+
+```{r disconnection summary}
+yearly_disconnections <- disconnections %>%
+  mutate(year = format(date, "%Y")) %>%
+  group_by(year) %>%
+  summarize(disconnections = sum(disconnections, na.rm = TRUE)) %>%
+  ungroup()
+
+disconnections_2020 <- yearly_disconnections %>%
+  filter(year == 2020) %>%
+  pull(disconnections)
+
+disconnections_2021 <- yearly_disconnections %>%
+  filter(year == 2021) %>%
+  pull(disconnections)
+
+disconnections_2022 <- yearly_disconnections %>%
+  filter(year == 2022) %>%
+  pull(disconnections)
+
+disconnections_2023 <- yearly_disconnections %>%
+  filter(year == 2023) %>%
+  pull(disconnections)
+
+percent_change_2020_2021 <- 100 * ((disconnections_2021 - disconnections_2020) / disconnections_2020)
+percent_change_2021_2022 <- 100 * ((disconnections_2022 - disconnections_2021) / disconnections_2021)
+percent_change_2022_2023 <- 100 * ((disconnections_2023 - disconnections_2022) / disconnections_2022)
+percent_change_2020_2023 <- 100 * ((disconnections_2023 - disconnections_2020) / disconnections_2020)
+
+non_moratoria_avg_percent_change <- (percent_change_2021_2022 + percent_change_2022_2023) / 2
+```
+
+Disconnections changed by `r signif(percent_change_2020_2021, digits = 3)`% (`r disconnections_2021 - disconnections_2020`) from 2020 to 2021. Disconnections changed from 2021 to 2022 by `r signif(percent_change_2021_2022, digits = 3)`% (`r disconnections_2022 - disconnections_2021`). Disconnections changed from 2022 to 2023 by `r signif(percent_change_2022_2023, digits = 2)`% (`r disconnections_2023 - disconnections_2022`). Overall from 2020 to 2023 DTE has disconnected `r disconnections_2023 - disconnections_2020` customers due to non-payment. During non moratoria years, 2021 - 2023, DTE performed a steady flow of disconnections due to non-payment, with an average increase of `r signif(non_moratoria_avg_percent_change, digits = 2)`% in new disconnections.
+
+
+```{r restoration_data}
+yearly_restorations <- restorations %>%
+  mutate(year = format(date, "%Y")) %>%
+  group_by(year) %>%
+  summarize(restorations = sum(restorations, na.rm = TRUE)) %>%
+  ungroup()
+
+restorations_2020 <- yearly_restorations %>%
+  filter(year == 2020) %>%
+  pull(restorations)
+
+restorations_2021 <- yearly_restorations %>%
+  filter(year == 2021) %>%
+  pull(restorations)
+
+restorations_2022 <- yearly_restorations %>%
+  filter(year == 2022) %>%
+  pull(restorations)
+
+restorations_2023 <- yearly_restorations %>%
+  filter(year == 2023) %>%
+  pull(restorations)
+
+percent_change_2020_2021 <- 100 * ((restorations_2021 - restorations_2020) / restorations_2020)
+percent_change_2021_2022 <- 100 * ((restorations_2022 - restorations_2021) / restorations_2021)
+percent_change_2022_2023 <- 100 * ((restorations_2023 - restorations_2022) / restorations_2022)
+percent_change_2020_2023 <- 100 * ((restorations_2023 - restorations_2020) / restorations_2020)
+```
+
+Restorations increased by `r signif(percent_change_2020_2021, digits = 3)`% (`r restorations_2021 - restorations_2020`) from 2020 to 2021. Restorations increased from 2021 to 2022 by `r signif(percent_change_2021_2022, digits = 3)`% (`r restorations_2022 - restorations_2021`). Restorations decreased from 2022 to 2023 by `r signif(percent_change_2022_2023, digits = 2)`% (`r restorations_2023 - restorations_2022`). Overall from 2020 to 2023 DTE has restored `r restorations_2023 - restorations_2020` customers due to non-payment.
+
+```{r restoration_stacked}
+ggplot() +
+  geom_area(
+    data = restorations,
+    aes(x = date, y = restorations/1e3, fill = utility)
+  ) +
+  scale_fill_manual(values = utility_colors) +
+  theme_bw() +
+  theme(
+    legend.position = "top"
+  ) +
+  labs(x = "", y = "Restorations (thousands)", fill = "Utility",
+       caption = "*Based on DTE Quarterly Report to MPSC Case U-18120, Rule 460.151")
+
+ggsave(file.path(outdir, "restorations_stacked.png"), height = 4, width = 6, dpi = 500)
+```
+```{r restorations_trends}
+restorations %>%
+  ggplot(aes(x = date, y = restorations, fill = utility, color = utility)) +
+  geom_smooth() +
+  scale_color_manual(values = utility_colors) +
+  scale_fill_manual(values = utility_colors) +
+  theme_bw() +
+  theme(
+    legend.position = "top"
+  ) +
+  labs(x = "", y = "Restorations (thousands)", fill = "Utility", color = "Utility",
+       caption = "*Based on DTE Quarterly Report to MPSC Case U-18120, Rule 460.151")
+
+ggsave(file.path(outdir, "restorations_trends.png"), height = 4, width = 6, dpi = 500)
+```
+
+```{r net_disconnections}
+net_disconnects <- disconnections %>%
+  left_join(
+    restorations,
+    by = c("date", "utility")
+  ) %>%
+  replace_na(list(disconnections = 0, restorations = 0)) %>%
+  mutate(net_disconnections = disconnections - restorations)
+
+ggplot() +
+  geom_area(
+    data = net_disconnects,
+    aes(x = date, y = net_disconnections, fill = utility)
+  ) +
+  scale_fill_manual(values = utility_colors) +
+  theme_bw() +
+  theme(
+    legend.position = "top"
+  ) +
+  labs(x = "", y = "Net DTE disconnections\ndue to non-payment", fill = "Utility",
+       caption = "*Based on DTE Quarterly Report to MPSC Case U-18120, Rule 460.151")
+
+ggsave(file.path(outdir, "net_disconnections_stacked.png"), height = 4, width = 6, dpi = 500)
+```
+
+```{r net_disconnections_summary}
+yearly_net_disconnections <- net_disconnects %>%
+  mutate(year = format(date, "%Y")) %>%
+  group_by(year) %>%
+  summarize(net_disconnections = sum(net_disconnections, na.rm = TRUE)) %>%
+  ungroup()
+
+net_disconnections_2020 <- yearly_net_disconnections %>%
+  filter(year == 2020) %>%
+  pull(net_disconnections)
+
+net_disconnections_2021 <- yearly_net_disconnections %>%
+  filter(year == 2021) %>%
+  pull(net_disconnections)
+
+net_disconnections_2022 <- yearly_net_disconnections %>%
+  filter(year == 2022) %>%
+  pull(net_disconnections)
+
+net_disconnections_2023 <- yearly_net_disconnections %>%
+  filter(year == 2023) %>%
+  pull(net_disconnections)
+
+percent_change_2021_2022 <- 100 * ((net_disconnections_2022 - net_disconnections_2021) / net_disconnections_2021)
+percent_change_2022_2023 <- 100 * ((net_disconnections_2023 - net_disconnections_2022) / net_disconnections_2022)
+
+net_disconnections_2020_2023 <- sum(yearly_net_disconnections$net_disconnections)
+net_disconnections_percent_change <- (percent_change_2021_2022 + percent_change_2022_2023) / 2
+```
+
+From 2020 - 2023 DTE had net disconnections (total disconnections - total restorations) totalling `r net_disconnections_2020_2023`, with an average increase during non-moratoria year 2021-2023 of `r signif(net_disconnections_percent_change, digits = 2)`% (`r round((net_disconnections_2023 - net_disconnections_2021) / 3)` average net disconnections per year).
+
+```{r alt_shutoff_protection_plan_stacked}
+# note that non low income non senior needs to be calculated from the total
+alt_shutoffs <- alt_shutoffs %>%
+  pivot_wider(names_from = customer_grp, values_from = enrollments) %>%
+  replace_na(list(total = 0, low_income = 0, seniors = 0)) %>%
+  mutate(non_low_income_non_senior = total - low_income - seniors) %>%
+  select(-total) %>%
+  pivot_longer(-c(date), names_to = "customer_grp", values_to = "enrollments") %>%
+  mutate(customer_grp = case_when(
+    customer_grp == "low_income" ~ "low-income",
+    customer_grp == "non_low_income_non_senior" ~ "non low-income non senior",
+    customer_grp == "seniors" ~ "seniors",
+    TRUE ~ "error"
+  ))
+
+alt_shutoffs %>%
+  ggplot(aes(x = date, y = enrollments/1e3, fill = customer_grp)) +
+  geom_area(stat = "identity") +
+  scale_fill_manual(values = customer_groups_colors) +
+  theme_bw() +
+  theme(
+    legend.position = "top"
+  ) +
+  labs(x = "", y = "Alternative Shutoff Protection\nPlan Enrollments (thousands)",  fill = "Customer Groups",
+       caption = "*Based on DTE Quarterly Report to MPSC Case U-18120, Rule 460.151")
+
+ggsave(file.path(outdir, "alt_shutoff_stacked.png"), height = 4, width = 6, units = "in", dpi = 500)
+```
+
+
+```{r alt_shutoffs_trends}
+alt_shutoffs %>%
+  ggplot(aes(x = date, y = enrollments/1e3, fill = customer_grp, color = customer_grp)) +
+  geom_smooth() +
+  scale_fill_manual(values = customer_groups_colors) +
+  scale_color_manual(values = customer_groups_colors) +
+  theme_bw() +
+  theme(
+    legend.position = "top"
+  ) +
+  labs(x = "", y = "Alternative Shutoff Protection\nPlan Enrollments (thousands)",  fill = "Customer Groups", color = "Customer Groups")
+```
+
+```{r alt_shutoff_summary}
+alt_shutoffs_yearly <- alt_shutoffs %>%
+  mutate(year = format(date, "%Y")) %>%
+  group_by(year) %>%
+  summarize(enrollments = sum(enrollments, na.rm = TRUE)) %>%
+  ungroup()
+
+alt_shutoffs_yearly_grps <- alt_shutoffs %>%
+  mutate(year = format(date, "%Y")) %>%
+  group_by(year, customer_grp) %>%
+  summarize(enrollments = sum(enrollments, na.rm = TRUE)) %>%
+  ungroup()
+
+alt_shutoffs_2020 <- alt_shutoffs_yearly %>%
+  filter(year == 2020) %>%
+  pull(enrollments)
+
+alt_shutoffs_2023 <- alt_shutoffs_yearly %>%
+  filter(year == 2023) %>%
+  pull(enrollments)
+
+percent_change_2020_2023 <- 100 * ((alt_shutoffs_2023 - alt_shutoffs_2020) / alt_shutoffs_2020)
+
+li_alt_shutoffs_2020 <- alt_shutoffs_yearly_grps %>%
+  filter(year == 2020 & customer_grp == "low-income") %>%
+  pull(enrollments)
+
+li_alt_shutoffs_2023 <- alt_shutoffs_yearly_grps %>%
+  filter(year == 2023 & customer_grp == "low-income") %>%
+  pull(enrollments)
+
+li_percent_change_2020_2023 <- 100 * ((li_alt_shutoffs_2023 - li_alt_shutoffs_2020) / li_alt_shutoffs_2020)
+
+seniors_alt_shutoffs_2020 <- alt_shutoffs_yearly_grps %>%
+  filter(year == 2020 & customer_grp == "seniors") %>%
+  pull(enrollments)
+
+seniors_alt_shutoffs_2023 <- alt_shutoffs_yearly_grps %>%
+  filter(year == 2023 & customer_grp == "seniors") %>%
+  pull(enrollments)
+
+seniors_percent_change_2020_2023 <- 100 * ((seniors_alt_shutoffs_2023 - seniors_alt_shutoffs_2020) / seniors_alt_shutoffs_2020)
+
+non_li_non_seniors_2020 <- alt_shutoffs_yearly_grps %>%
+  filter(year == 2020 & customer_grp == "non low-income non senior") %>%
+  pull(enrollments)
+
+non_li_non_seniors_2023 <- alt_shutoffs_yearly_grps %>%
+  filter(year == 2023 & customer_grp == "non low-income non senior") %>%
+  pull(enrollments)
+
+non_li_non_seniors_change_2020_2023 <- 100 * ((non_li_non_seniors_2023 - non_li_non_seniors_2020) / non_li_non_seniors_2020)
+```
+
+Overall from 2020 - 2023 DTE Alternative Shutoff Protection Plan enrollments decreased by `r round(percent_change_2020_2023)`% (`r alt_shutoffs_2023 - alt_shutoffs_2020`). Specifically low income customer enrollments into the plan decreased by `r round(li_percent_change_2020_2023)`% (`r li_alt_shutoffs_2023 - li_alt_shutoffs_2020`), seniors enrollments decreased by `r round(seniors_percent_change_2020_2023)`% (`r seniors_alt_shutoffs_2023 - seniors_alt_shutoffs_2020`), and non low-income non senior customers decreased by `r round(non_li_non_seniors_change_2020_2023)`% (`r non_li_non_seniors_2023 - non_li_non_seniors_2020`).
+
+```{r wpp_stacked}
+# note that non low income non senior needs to be calculated from the total
+wpp <- wpp %>%
+  pivot_wider(names_from = customer_grp, values_from = enrollments) %>%
+  replace_na(list(total = 0, low_income = 0, seniors = 0)) %>%
+  mutate(non_low_income_non_senior = total - low_income - seniors) %>%
+  # special case for 2020 Q1 look at pdf comments:
+  # Due to some customers coded as low-income and senior, the month end count is lower than the combined count
+  mutate(non_low_income_non_senior = case_when(
+    non_low_income_non_senior < 0 ~ 0,
+    TRUE ~ non_low_income_non_senior
+  )) %>%
+  select(-total) %>%
+  pivot_longer(-c(date), names_to = "customer_grp", values_to = "enrollments") %>%
+  mutate(customer_grp = case_when(
+    customer_grp == "low_income" ~ "low-income",
+    customer_grp == "non_low_income_non_senior" ~ "non low-income non senior",
+    customer_grp == "seniors" ~ "seniors",
+    TRUE ~ "error"
+  ))
+
+wpp %>%
+  ggplot(aes(x = date, y = enrollments, fill = customer_grp)) +
+  geom_area(stat = "identity") +
+  scale_fill_manual(values = customer_groups_colors) +
+  theme_bw() +
+  theme(
+    legend.position = "top"
+  ) +
+  labs(x = "", y = "Winter Protection Plan Enrollments",  fill = "Customer Groups",
+       caption = "*Based on DTE Quarterly Report to MPSC Case U-18120, Rule 460.151")
+
+ggsave(file.path(outdir, "winter_protection_plan_stacked.png"), height = 4, width = 6, units = "in", dpi = 500)
+```
+
+
+
+
+
