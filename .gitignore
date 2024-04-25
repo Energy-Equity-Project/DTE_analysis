@@ -10,4 +10,7 @@ data/
 results/
 
 *.html
+Archive/*.png
+Archive/*.csv
+
 
